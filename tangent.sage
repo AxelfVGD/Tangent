@@ -97,7 +97,7 @@ X_Fqm = X.change_ring(Fqm)
 
 b,Q = A_Fqm.is_similar(X_Fqm,transformation=True)
 
-Gprime = (Q * G).change_ring(Fq)
+Gprime = (Q * Hpub).change_ring(Fq)
 Vr = matrix(Fqm,r,n)
 for i in range(r):
     for j in range(n):
