@@ -1,5 +1,6 @@
 load('codecrypto.sage')
 load('util.sage')
+load('GH78.sage')
 
 # Define the parameters
 
@@ -116,3 +117,16 @@ for j in range(m):
     print(b)
     if b:
         break
+
+# now we know that E = GRS_r(x,y)^(q^j)
+
+new_support, new_multiplier = GH78(Vr)
+
+new_support = [x^(q^(m-j)) for x in new_support]
+new_multiplier = [y^(q^(m-j)) for y in new_multiplier]
+
+Test = codes.GeneralizedReedSolomonCode(new_support, r, new_multiplier)
+
+print('FINAL TEST')
+for c in Test.generator_matrix():
+    print(c in GRS)
