@@ -1,5 +1,5 @@
 from itertools import product
-
+import time as tps
 
 # GENERAL CODING STUFF
 
