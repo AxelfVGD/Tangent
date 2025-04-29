@@ -12,6 +12,7 @@ Fqm.<a> = Fq.extension(m)
 
 # A boolean variable to decide if the alternant code is Goppa or not
 goppa = False
+recover_grs = False
 
 # Change this 
 n = q^m
@@ -107,26 +108,33 @@ for i in range(r):
 E = codes.LinearCode(Vr)
 print(E)
 
-# Now E should be GRS_r(x,y)^(q^j) for some integer j
-for j in range(m):
-    print('testing j =', j)
-    b = True 
-    for c in GRS.generator_matrix():
-        c = vector([ci^(q^j) for ci in c])
-        b = b and (c in E)
-    print(b)
-    if b:
-        break
 
-# now we know that E = GRS_r(x,y)^(q^j)
+if recover_grs:
 
-new_support, new_multiplier = GH78(Vr)
+    # Now E should be GRS_r(x,y)^(q^j) for some integer j
+    for j in range(m):
+        print('testing j =', j)
+        b = True 
+        for c in GRS.generator_matrix():
+            c = vector([ci^(q^j) for ci in c])
+            b = b and (c in E)
+        print(b)
+        if b:
+            break
 
-new_support = [x^(q^(m-j)) for x in new_support]
-new_multiplier = [y^(q^(m-j)) for y in new_multiplier]
+    # now we know that E = GRS_r(x,y)^(q^j)
 
-Test = codes.GeneralizedReedSolomonCode(new_support, r, new_multiplier)
+    new_support, new_multiplier = GH78(Vr)
 
-print('FINAL TEST')
-for c in Test.generator_matrix():
-    print(c in GRS)
+    new_support = [x^(q^(m-j)) for x in new_support]
+    new_multiplier = [y^(q^(m-j)) for y in new_multiplier]
+
+    Test = codes.GeneralizedReedSolomonCode(new_support, r, new_multiplier)
+
+    print('FINAL TEST')
+    for c in Test.generator_matrix():
+        print(c in GRS)
+
+else:
+    Test = trace_code(E,Fq)
+    print(f'Attack success: {Test == D}')
