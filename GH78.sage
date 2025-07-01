@@ -5,102 +5,69 @@ load('codecrypto.sage')
 # "Through any n+3 points in general position in P^n there passes a unique rational normal curve."
 # Finding the parametrization enables one to recover a support and a multiplier of a given GRS code
 
-
-# given 3 points a,b,c in Fq, find a homography s such that s(0) = a, s(1) = b and s(\infinity) = c
-def find_homography(L):
-    a,b,c = L
-    M = matrix([[0,1,0,-a],[1,1,-b,-b],[1,0,-c,0]])
-    return M.right_kernel().basis_matrix()[0]
-
 # Given G a generator matrix of C = GRS_k(x,y), recovers x' and y' such that C = GRS_k(x',y')
 def GH78(G):
-    n = G.ncols()
-    k = G.nrows() - 1  # the columns of G are identified with points in P^(k-1)
     Fq = G.base_ring()
+    r = G.nrows()-1
+    P1.<u,v> = ProjectiveSpace(Fq,1)
+    P = ProjectiveSpace(Fq,r)
+    R.<t> = Fq['t']
 
-    # ensure we can scale the points so as to have them all in the affine space A^(k-1) = P^(k-1) \ {x_k = 0}
-    while 0 in G[-1]:
-        G = GL(k+1,Fq).random_element() * G
-    
-    Points = []
-    for i in range(k+3):
-        g = G.column(i)
-        Points.append([g[i] / g[-1] for i in range(k)])
+    Points = [P(*g) for g in G.columns()]
 
-    R = PolynomialRing(Fq, k+1, ','.join(f'X{i}' for i in range(1,k+1)) + ',t')
-    X = list(R.gens())
-    t = X.pop()
+    Psi = rational_normal_curve(Points,BasePoints=Points[r:r+3])
+    Psi *= lcm(psi.denominator() for psi in Psi)
 
-
-    # List the parametrization of each hyperplane
-    # H[i] parametrizes the hyperplanes containing Points[0], ... , Points[n-1] but Points[i]
-    # We also rearrange the parametrization so that Points[n] \in H[i](t = 0), Points[n+1] \in H[i](t = 1) and Points[n+2] \in H[i](t = \infinity)
-    H = []
-
-    for i in range(k):
-        P = Points[(i+1)%k]
-        M = matrix([list(Points[j]) + [1] for j in range(k) if j != i])
-
-        B = M.right_kernel().basis_matrix()
-        H.append(vector([t,1]) * B * vector([X[i] for i in range(k)] + [1]))
-
-        lambda_j = []
-        for j in range(3):
-            var = list(Points[k+j]) + [t]
-            fj = H[i](*var)
-            lambda_j.append(Fq( - fj(*[0 for _ in range(k+1)]) / fj.coefficient(t)))
-
-        a,b,c,d = find_homography(lambda_j)
-        H[i] = H[i].subs(t=(a*t+b)/(c*t+d)).numerator()
-
-    # The intersection between all hyperplanes defines a paramtrized curve of parameter t, so we solve for X_0, ... , X_{k-1}
-    Mat = matrix([[H[i].coefficient(X[j]) for j in range(k)] for i in range(k)])
-
-    A.<T> = Fq['T']
-
-    Mat = Mat.subs(t=T)
-    det = Mat.det()
-
-    Target = []
-    for i in range(k):
-        var = [0 for _ in range(k)] + [t]
-        Target.append(-H[i](*var).subs(t=T))
-
-    # Psi is a parametrization of a rational normal curve
-    Psi = Mat.inverse() * vector(Target)
-
-    # Psi(t0) is the point at infinity
-    t0 = det.roots()
-
-    if len(det.roots()) == 1:
-        t0 = det.roots()[0][0]
-        Psi = [psi.subs(T=t0+1/T) for psi in Psi]
-
+    # find the new support, possibly with infinity
     new_support = []
-
-    for j in range(n):
-        g = G.column(j)
-        P = [g[s] / g[-1] for s in range(k)]
-
-        # find t such that Psi(t) = P
-        fact = gcd([psi.numerator() - p*psi.denominator() for psi, p in zip(Psi, P)])
-        if fact == 1:
-            new_support.append(infinity)
+    for g in Points:
+        if P(*Psi(1,0)) == g:
+            new_support.append(P1(1,0))
         else:
-            new_support.append(-fact.roots()[0][0])
+            i = r
+            while g[i] == 0:
+                i -= 1
+            f = gcd(psi(t,1).numerator() - gi/g[i] * psi(t,1).denominator() for gi,psi in zip(g,Psi/Psi[i]))
+            new_support.append(P1(f.roots()[0][0],1))
 
+    if P1(1,0) in new_support:
+        a = Set(P1.rational_points()).difference(new_support).an_element()[0]
+        new_support = [P1(p[1],p[0]-a*p[1]) for p in new_support]
+        Phi = Psi(v+a*u,u)
+        Phi *= lcm(phi.denominator() for phi in Phi)
 
-    if infinity in new_support:
-        # reparametrize so that 
-        a = Set(Fq).difference(Set(new_support)).an_element()
-        very_new_support = []
-        for x in new_support:
-            if x == infinity:
-                very_new_support.append(0)
-            else:
-                very_new_support.append(1 / (x-a))
+    # now find the multiplier
+    new_multiplier = []
+    for g,x in zip(G.columns(),new_support):
+        i = r
+        while g[i] == 0:
+            i -= 1
+        new_multiplier.append(g[i] / Phi(*x)[i])
 
-    D = codes.GeneralizedReedSolomonCode(very_new_support, k+1)
-    very_new_multiplier = cond(D,C).generator_matrix()[0]
+    return ([p[0] for p in new_support],new_multiplier)
 
-    return (very_new_support, very_new_multiplier)
+# A specialized function when y = 1 / Gamma(x) : this function works in P^r instead of P^(r-1) and directly recovers a Goppa polynomial
+def GH78Goppa(G):
+    Fq = G.base_ring()
+    r = G.nrows()
+    P1.<u,v> = ProjectiveSpace(Fq,1)
+    P = ProjectiveSpace(Fq,r)
+    R.<t> = Fq['t']
+
+    Points = [P(*(list(g)+[1])) for g in G.columns()]
+
+    Psi = rational_normal_curve(Points,BasePoints=[Points[r],Points[r+1]]+[P([0 for _ in range(r)]+[1])])
+    Psi *= lcm(psi.denominator() for psi in Psi)
+
+    # find the new support. Since the third base points was (0:...:0:1), the point at infinity (1:0) certainly is not in the new support
+    new_support = []
+    for g in Points:
+        i = r
+        while g[i] == 0:
+            i -= 1
+        f = gcd(psi(t,1).numerator() - gi/g[i] * psi(t,1).denominator() for gi,psi in zip(g,Psi/Psi[i]))
+        new_support.append(P1(f.roots()[0][0],1))
+
+    # no need to recover the multiplier since we already have the Goppa polynomial
+
+    return ([p[0] for p in new_support],Psi[-1](t,1).numerator())

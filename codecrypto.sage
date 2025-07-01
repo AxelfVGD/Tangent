@@ -1,5 +1,5 @@
 from itertools import product
-import time as tps
+
 
 # GENERAL CODING STUFF
 
@@ -8,7 +8,7 @@ def inter(C,D):
     return codes.LinearCode(matrix(list(C.parity_check_matrix()) + list(D.parity_check_matrix()))).dual_code()
 
 # C * D
-def prod(C,D):
+def code_product(C,D):
     GC = C.generator_matrix()
     GD = D.generator_matrix()
     return codes.LinearCode(matrix([GC[i].pairwise_product(GD[j]) for i,j in product(range(GC.nrows()), range(GD.nrows()))]))
@@ -21,7 +21,7 @@ def square(C):
 
 # X * C \subset D
 def cond(C,D):
-    return prod(C,D.dual_code()).dual_code()
+    return code_product(C,D.dual_code()).dual_code()
 
 def shorten(C, I):
     G = C.generator_matrix()
@@ -96,8 +96,12 @@ def relation_to_matrix(rel,k,F):
             res[j,i] = rel[c]
             c += 1
         elif i == j:
+            res[i,i] = 2*rel[c]
             c += 1
     return res
+
+def vectorize(M):
+    return vector(flatten([list(r) for r in M.rows()]))
 
 # ALGEBRAIC GEOMETRY
 
@@ -111,4 +115,42 @@ def compute_local_dimension(F,P):
     X = F[0].parent().gens()
     J = jacobian(F,X)(*P)
     return len(X) - J.rank()
+
+def rational_normal_curve(Points,BasePoints):
+
+    '''
+    Griffiths, P. and Harris, J. in Principles of Algebraic Geometry:
+    "Through any n+3 points in general position in P^n there passes a unique rational normal curve."
+    This algorithm implements there method for retrieving the parametrization of such curve
+    '''
+
+    def find_homography(a,b,c):
+        # a,b and c must be points on the projective line
+        return matrix([[0,a[1],0,-a[0]],[b[1],b[1],-b[0],-b[0]],[c[1],0,-c[0],0]]).right_kernel().basis_matrix()[0]
+
+    Fq = Points[0].base_ring()
+    P1.<u,v> = ProjectiveSpace(Fq,1)
+    r = len(Points[0])-1
+    P = ProjectiveSpace(Fq,r)
+
+    # H[i] parametrizes the hyperplanes passing through Points[0],...,Points[i-1],Points[i+1],...,Points[r-1]
+    H = []
+    for i in range(r):
+        M = matrix([list(Points[j]) for j in range(r) if j != i])
+        plane = vector([u,v]) * M.right_kernel().basis_matrix()
+
+        # we reparametrize so that H[i](0:1) = BasePoints[0], H[i](1:1) = BasePoints[1] and H[i](1:0) = BasePoints[2]
+        lambda_j = []
+        for p in BasePoints:
+            f = vector(p) * plane
+            lambda_j.append(P1([f.coefficient(v),-f.coefficient(u)]))
+        # Find the homography that sens (0,1,\inf) onto (lambda_1,lambda_2,lambda_3)    
+        a,b,c,d = find_homography(*lambda_j)
+        H.append(plane(a*u+b*v,c*u+d*v))
+
+    H = matrix(H)
+    F = FractionField(H.base_ring())
+    H = H.change_ring(F)
+    Psi = H.right_kernel().basis_matrix()[0]
+    return Psi
 
